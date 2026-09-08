@@ -1,4 +1,4 @@
-"""核对讲义手算、投影、在线时序和输入边界。"""
+"""核对手算结果、投影、在线时序和输入边界。"""
 
 import numpy as np
 import pytest
@@ -17,7 +17,7 @@ def test_hand_calculated_three_rounds():
     assert linear_regret(g, ftl) == pytest.approx(2.5)
 
 
-def test_lecture_experiment():
+def test_400_round_alternating_gradients():
     g = alternating_gradients(400)
     np.testing.assert_array_equal(g[:5], [0.5, -1, 1, -1, 1])
     assert linear_regret(g, ogd_linear(g, eta=0.1)) == pytest.approx(20.45)

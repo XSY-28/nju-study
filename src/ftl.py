@@ -1,4 +1,4 @@
-"""平方损失下的 Follow the Leader（FTL），保留原练习的均值递推思路。"""
+"""平方损失下的 Follow the Leader（FTL），通过历史均值递推生成预测。"""
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -30,7 +30,7 @@ def ftl_square_predictions(y: ArrayLike, x0: float = 0.5) -> NDArray[np.float64]
 def ftl_square(y: ArrayLike, x0: float = 0.5) -> float:
     """返回 FTL 相对于事后最佳固定决策的累计静态遗憾。
 
-    保留原函数的返回方式：算法累计平方损失减去最佳固定决策的
+    算法累计平方损失减去最佳固定决策的
     累计平方损失。全序列均值 u 仅用于事后评估，不参与在线预测。
     输入要求与 ftl_square_predictions 相同。
     """

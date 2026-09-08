@@ -9,7 +9,7 @@ from src.ogd import ftl_linear, linear_regret, ogd_linear
 
 
 def alternating_gradients(rounds: int) -> NDArray[np.float64]:
-    """生成讲义 7.2 的梯度序列：0.5, -1, 1, -1, ...。"""
+    """生成用于比较 FTL 与 OGD 的交替梯度序列：0.5, -1, 1, -1, ...。"""
     if isinstance(rounds, bool) or not isinstance(rounds, (int, np.integer)) or rounds < 1:
         raise ValueError("rounds 必须为正整数")
     t = np.arange(1, rounds + 1)
