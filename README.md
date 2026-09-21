@@ -1,6 +1,6 @@
 # nju-study
 
-在线学习算法的 Python 实现、测试和可复现实验，包含平方损失下的 FTL 与线性损失下的 OGD。
+在线学习算法的 Python 实现、测试和可复现实验，包含平方损失下的 FTL、线性损失下的 OGD，以及区间约束下两种 OGD 步长的比较。代码采用 MIT 许可证。
 
 ## 目录
 
@@ -59,13 +59,13 @@ $$
 
 ### 安装与运行
 
-以下命令在仓库根目录执行。受测环境：macOS 26.6.2、Python 3.13.14、NumPy 2.5.2、pytest 9.1.1。
-环境放在仓库外，避免把虚拟环境加入版本管理。
+以下命令在仓库根目录执行，使用 Python 3.13。依赖版本记录在 requirements 文件中。
+虚拟环境仅属于本项目，且已被 `.gitignore` 排除。
 
 ```bash
-python3 -m venv ~/.venvs/nju-study
-source ~/.venvs/nju-study/bin/activate
-python -m pip install numpy==2.5.2 pytest==9.1.1
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
 python -m pytest -q
 python -m experiments.run_ftl_square --rounds 400 --seed 42
 ```
@@ -149,3 +149,146 @@ python -m experiments.run_ogd_linear --rounds 400
 
 这是确定性实验，不需要随机种子。改变 `--rounds` 时会按总轮数重新选择步长。
 这些结果用于核对实现和理解算法差异，数值实验不能替代理论证明。
+
+## 半平方损失下的 OGD：递减步长与固定步长
+
+本实验比较 `eta_t = 1/t` 与 `eta = 0.5`。它们都是 OGD，区别仅在步长。
+
+- `src/ogd_square.py`：在线预测、损失评价，以及均匀独立观测下的精确期望。
+- `experiments/run_ogd_square.py`：五类数据、固定随机种子、多种轮数和 CSV 导出。
+- `tests/test_ogd_square.py`：手算、历史信息约束、投影、仿射缩放、期望公式和命令行测试。
+
+### 损失、时序和评价
+
+给定区间 $[a,b]$，要求 $a<b$，且每轮观测 $y_t$ 都在该区间内。
+初始预测为中点 $x_1=(a+b)/2$，每轮先预测，再观察：
+
+$$
+f_t(x)=\frac12(x-y_t)^2,\qquad g_t=x_t-y_t,
+$$
+
+$$
+x_{t+1}=\operatorname{clip}(x_t-\eta_t g_t,a,b).
+$$
+
+注意：这里损失包含 $1/2$，与前面的 `ftl_square` 损失定义不同。
+前后两种归一化下的遗憾相差两倍，不能直接混用。
+这里的强凸参数为 $\mu=1$，因此标准递减步长为 $1/(\mu t)=1/t$。
+
+`1/t` 更新可改写为
+
+$$
+x_{t+1}=\left(1-\frac1t\right)x_t+\frac1t y_t
+=\frac1t\sum_{s=1}^{t}y_s.
+$$
+
+因此它恰好产生历史均值预测，与这个问题上的 FTL 预测相同。
+`0.5` 更新则是 $x_{t+1}=0.5x_t+0.5y_t$，更重视近期观测。
+这两种步长的更新都是区间内点的凸组合，投影不会生效；仍保留 `clip`，
+因为一般步长可能越界。核心函数支持其他正固定步长。
+
+事后最佳固定决策为 $u^*=\frac1T\sum_t y_t$，且它必在区间内。
+程序同时输出两方累计损失、累计静态遗憾及平均静态遗憾：
+
+$$
+R_T=\frac12\sum_{t=1}^T(x_t-y_t)^2
+-\frac12\sum_{t=1}^T(u^*-y_t)^2,\qquad \overline R_T=R_T/T.
+$$
+
+`u*` 只用于事后评价，绝不用于在线预测。比较对象是一个全程固定的决策，
+不是每轮各选一个最优点。静态遗憾有可能为负，因此程序不把它截断成 0。
+
+### 运行
+
+先按上文安装依赖，然后在仓库根目录执行：
+
+```bash
+# 与基本实验相同：100 轮均匀独立观测，两种步长使用同一份数据
+python -m experiments.run_ogd_square
+
+# 五类数据，比较不同轮数
+python -m experiments.run_ogd_square --scenario all --rounds 3 100 10000
+
+# 改变区间和固定步长；seed 相同时可复现观测
+python -m experiments.run_ogd_square --a -2 --b 3 --fixed-eta 0.2 --seed 7
+
+# 将结果保存到新文件；已有文件不会被覆盖
+mkdir -p results
+python -m experiments.run_ogd_square --scenario all --rounds 100 1000 --csv results/summary.csv
+
+# 全部测试
+python -m pytest -q
+```
+
+| 场景参数 | 在 $[0,1]$ 上的数据 | 用途 |
+|---|---|---|
+| `uniform` | 独立均匀随机观测 | 比较持续噪声下两种步长 |
+| `initial_outlier` | $0,1,1,\ldots,1$ | 检查固定步长长期表现更好的反例 |
+| `constant` | 始终为 $0.7$ | 检查预测如何接近不变目标 |
+| `alternating` | $0,1,0,1,\ldots$ | 检查对交替变化的响应 |
+| `switch` | 前 $\lfloor T/2\rfloor$ 轮为 $0.2$，之后为 $0.8$ | 检查分布突然变化后的响应 |
+
+其他区间通过 $y\mapsto a+(b-a)y$ 得到。所有场景都使用静态遗憾，
+包括 `switch`；它不等同于衡量每轮追踪能力的动态遗憾。
+随机场景同种子下不同轮数使用同一序列的前缀；`switch` 的切换点随总轮数改变。
+
+### 为什么“理论上界更好”不意味着每次遗憾都更低？
+
+设 $D=b-a$，在本实验假设下 $|g_t|\le D$。
+标准强凸分析保证，步长 $1/t$ 对所有允许的观测序列满足：
+
+$$
+R_T\le\frac{D^2}{2}\sum_{t=1}^T\frac1t
+\le\frac{D^2}{2}(1+\log T).
+$$
+
+这是最坏情形的上界，不是每条序列上实际遗憾的精确值，
+更不是说它在每条序列上都优于另一种步长。
+例如在 $y=(0,1,1,\ldots,1)$、初值 $0.5$ 上：
+
+| 轮数 | `1/t` 的实际 $R_T$ | `0.5` 的实际 $R_T$ |
+|---:|---:|---:|
+| 3 | 0.416667 | 0.143229 |
+| 100 | 0.447442 | 0.005000 |
+| 10000 | 0.447467 | 0.000050 |
+
+固定步长更快忘掉第一轮异常值，因此这里并不是“轮数大了就一定被反超”。
+
+对独立同分布 $y_t\sim\mathrm{Uniform}[0,1]$、初值 $0.5$，结论不同。
+记 $H_n=\sum_{t=1}^n1/t$，$H_0=0$，可以精确计算：
+
+$$
+\mathbb E[R_T^{1/t}]=\frac{1+H_{T-1}}{24},
+\qquad
+\mathbb E[R_T^{0.5}]=\frac{T}{72}+\frac5{216}+\frac{4^{-T}}{54}.
+$$
+
+| 轮数 | `1/t` 的期望 $\mathbb E[R_T]$ | `0.5` 的期望 $\mathbb E[R_T]$ |
+|---:|---:|---:|
+| 3 | 0.104167 | 0.065104 |
+| 100 | 0.257391 | 1.412037 |
+| 10000 | 0.449479 | 138.912037 |
+
+这些是对随机数据取期望后的数值，**不是单次运行结果，也不是上界**。
+固定步长一直明显响应新噪声，预测的波动不会消失；递减步长相当于平均更多历史样本，
+预测逐渐稳定。不能把“更随机”当作普遍条件，上述公式特指独立、同分布的均匀观测。
+
+期望计算采用确定性的二阶矩递推，而不是用一次模拟充当期望：
+记 $m=(a+b)/2$、$\sigma^2=(b-a)^2/12$、$q_t=\mathbb E[(x_t-m)^2]$，则
+
+$$
+q_1=0,\qquad q_{t+1}=(1-\eta_t)^2q_t+\eta_t^2\sigma^2,
+\qquad \mathbb E[R_T]=\frac{\sigma^2}{2}+\frac12\sum_{t=1}^Tq_t.
+$$
+
+这里使用了 $x_t$ 与新观测 $y_t$ 的独立性，以及
+$\mathbb E[\sum_t f_t(u^*)]=(T-1)\sigma^2/2$。
+要求初值为中点，且步长在 $(0,1]$ 内使投影不生效。
+程序仅在这些条件下输出该期望；任意数据、其他初值或更大步长不能直接套用。
+一般区间上的两条期望公式均为 $[0,1]$ 公式乘以 $(b-a)^2$。
+
+代码使用双精度浮点数；极大数值可能使平方损失溢出，不适合作为无限精度数学计算器。
+
+## 许可证
+
+本仓库代码与说明采用 [MIT License](LICENSE)。
