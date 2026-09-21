@@ -3,6 +3,8 @@
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from ._validation import finite_scalar, finite_vector
+
 
 def ftl_square_predictions(y: ArrayLike, x0: float = 0.5) -> NDArray[np.float64]:
     """返回每轮预测；预测 x[t] 时只使用 y[:t]。
@@ -11,13 +13,8 @@ def ftl_square_predictions(y: ArrayLike, x0: float = 0.5) -> NDArray[np.float64]
     是过去观测的平均值。第一轮没有历史数据，使用 x0（默认 0.5）。
     y 必须是一维、非空、只含有限实数的序列，x0 必须是有限实数。
     """
-    y = np.asarray(y, dtype=float)
-    if y.ndim != 1 or y.size == 0:
-        raise ValueError("y 必须是非空的一维序列")
-    if not np.all(np.isfinite(y)):
-        raise ValueError("y 不能包含 NaN 或无穷大")
-    if not np.isfinite(x0):
-        raise ValueError("x0 必须是有限实数")
+    y = finite_vector(y, "y")
+    x0 = finite_scalar(x0, "x0")
 
     x = np.empty(len(y), dtype=float)
     x[0] = x0
@@ -34,7 +31,7 @@ def ftl_square(y: ArrayLike, x0: float = 0.5) -> float:
     累计平方损失。全序列均值 u 仅用于事后评估，不参与在线预测。
     输入要求与 ftl_square_predictions 相同。
     """
-    y = np.asarray(y, dtype=float)
+    y = finite_vector(y, "y")
     x = ftl_square_predictions(y, x0)
     u = y.mean()
     algorithm_loss = np.sum((x - y) ** 2)
