@@ -1,92 +1,127 @@
 # nju-study
 
-在线学习算法的 Python 实现、测试和可复现实验，包含平方损失下的 FTL 与线性损失下的 OGD。
+**English** | [简体中文](README.zh-CN.md)
 
-## 目录
+**Learn online learning through small NumPy implementations, worked examples, and reproducible regret experiments.**
 
-- `src/`：源代码
-- `tests/`：测试
-- `experiments/`：实验
+This repository implements Follow the Leader (FTL) for squared loss and compares Online Gradient Descent (OGD) with FTL on alternating linear losses. It connects the update rules to executable code, hand calculations, and tests that check the online timing: make a decision first, then observe the current loss.
 
-## 平方损失下的 FTL
+| Experiment | What you can explore |
+|---|---|
+| [FTL with squared loss](#ftl-with-squared-loss) | Why minimizing past squared losses gives the historical mean, and how to compute static regret |
+| [OGD vs. FTL with linear loss](#ogd-vs-ftl-with-linear-loss) | How FTL can incur linear regret on an alternating sequence while projected OGD has a square-root regret bound |
 
-通过历史均值递推实现 FTL（Follow the Leader），在二元观测序列上计算累计平方损失与静态遗憾。
+These are learning experiments, not a general-purpose optimization library. The documentation is self-contained; no separate course notes are required. Source comments and command-line output currently remain in Chinese. Function names, command-line options, and the English explanations below provide the corresponding usage and interpretation.
 
-- `src/ftl.py`：预测序列与累计静态遗憾计算。
-- `tests/test_ftl.py`：手算例子、边界输入和“不使用本轮及未来观测”的检查。
-- `experiments/run_ftl_square.py`：固定随机种子的二元观测实验。
+## Quick start
 
-### 问题与更新
-
-每轮先预测 $`x_t`$，再观察 $`y_t`$，损失为 $`f_t(x_t)=(x_t-y_t)^2`$。
-这里决策域为实数；当观测和初始预测都在 $`[0,1]`$ 时，所有预测也都在 $`[0,1]`$。
-
-FTL（Follow the Leader）选择使过去累计损失最小的决策。
-对平方损失，将过去累计损失对 $`x`$ 求导并令其为零，得到历史平均值：
-
-```math
-x_t=\frac{1}{t-1}\sum_{s=1}^{t-1}y_s,\qquad t\ge2.
-```
-
-第一轮没有历史数据，默认取 $`x_1=0.5`$。代码采用从 0 开始的索引，递推写成：
-
-```python
-x[i + 1] = x[i] + (y[i] - x[i]) / (i + 1)
-```
-
-它表示：观察到 `y[i]` 后，更新**下一轮**预测，而不是先看到本轮答案再预测。
-每轮更新只需常数时间，总时间为 $`O(T)`$；为方便检查，保存全部预测需要 $`O(T)`$ 空间。
-
-事后最佳固定决策为全序列均值 $`u=\frac{1}{T}\sum_{t=1}^T y_t`$，累计静态遗憾为：
-
-```math
-R_T=\sum_{t=1}^T(x_t-y_t)^2-\sum_{t=1}^T(u-y_t)^2.
-```
-
-`u` 仅用于事后评价，不参与在线预测。它在所有轮次固定，不是每轮单独挑选一个最优决策。
-`ftl_square(y)` 返回累计静态遗憾；
-`ftl_square_predictions(y)` 返回预测序列，便于手算核对。
-两者接受一维、非空、只含有限实数的序列，可用 `x0` 设置第一轮预测。
-复数输入会被拒绝；`x0` 必须是单个有限实数，不能传入列表或一维数组。
-
-### 手算检查
-
-令 `y = [0, 1]`，则预测为 `[0.5, 0]`：
-
-- 算法累计损失：$`0.5^2+(0-1)^2=1.25`$。
-- 最佳固定决策：$`u=0.5`$，累计损失为 $`0.5`$。
-- 静态遗憾：$`R_2=1.25-0.5=0.75`$。
-
-### 安装与运行
-
-以下命令在仓库根目录执行。受测环境：macOS 26.6.2、Python 3.13.14、NumPy 2.5.2、pytest 9.1.1。
-环境放在仓库外，避免把虚拟环境加入版本管理。
+Clone the repository and run commands from its root. The setup below uses a POSIX shell and keeps the virtual environment outside the repository:
 
 ```bash
+git clone https://github.com/XSY-28/nju-study.git
+cd nju-study
 python3 -m venv ~/.venvs/nju-study
 source ~/.venvs/nju-study/bin/activate
 python -m pip install numpy==2.5.2 pytest==9.1.1
 python -m pytest -q
 python -m experiments.run_ftl_square --rounds 400 --seed 42
+python -m experiments.run_ogd_linear --rounds 400
 ```
 
-运行实验时会输出前几轮观测与预测、算法累计损失、最佳固定决策累计损失及 regret。
-默认使用 400 轮观测和随机种子 42；同一环境中保持参数不变，可复现结果。
-上述环境下，默认实验的累计静态遗憾约为 `2.108443`。
-这个实验用来理解和检查平方损失 FTL，不构成对一般损失下 FTL 性能的保证。
+Previously tested environment: macOS 26.6.2, Python 3.13.14, NumPy 2.5.2, and pytest 9.1.1. This is a reproducibility reference, not a claim of testing on every platform.
 
-## 线性损失下的 OGD 与 FTL 对比
+Expected reference results for these commands:
 
-在交替变化的线性损失序列上比较在线梯度下降（Online Gradient Descent，OGD）与 FTL，
-展示 FTL 在该序列上产生线性增长的遗憾，而 OGD 满足平方根量级的遗憾上界。
+| Experiment | Quantity | Value |
+|---|---|---:|
+| Squared-loss FTL, 400 rounds, seed 42 | Static regret | ≈ 2.108443 |
+| Linear-loss OGD, 400 rounds | Static regret | 20.45 |
+| Linear-loss FTL, 400 rounds | Static regret | 399.5 |
+| Linear-loss OGD, 400 rounds | Theoretical regret bound | 40 |
 
-- `src/ogd.py`：`ogd_linear`、`ftl_linear` 返回每轮决策；`linear_regret` 计算静态遗憾。
-- `tests/test_ogd.py`：手算例子、400 轮结果、投影边界、在线时序及无效输入。
-- `experiments/run_ogd_linear.py`：生成交替梯度序列并输出两种算法的对比结果。
+The squared-loss experiment samples binary observations using the specified seed. The linear-loss experiment is deterministic and needs no seed. Numerical results help check the implementation; they do not replace a proof.
 
-### 实验数据
+## Repository layout
 
-使用奇数轮为正、偶数轮为负的梯度序列，并把第一项设为 `0.5`：
+| Path | Contents |
+|---|---|
+| [src/ftl.py](src/ftl.py) | Squared-loss FTL predictions and cumulative static regret |
+| [src/ogd.py](src/ogd.py) | Linear-loss OGD/FTL decisions and static regret |
+| [src/_validation.py](src/_validation.py) | Shared input validation |
+| [tests/](tests/) | Worked examples, boundary cases, input validation, and online-timing checks |
+| [experiments/](experiments/) | Reproducible command-line experiments |
+
+## FTL with squared loss
+
+At round t, predict a value, then observe the outcome. The loss is
+
+$$
+f_t(x_t)=(x_t-y_t)^2.
+$$
+
+The decision domain is the real line. If the observations and initial prediction are all in [0, 1], the predictions stay in that interval.
+
+### Update rule
+
+FTL selects a decision that minimizes the accumulated **past** losses. Differentiating the sum of past squared losses and setting the derivative to zero gives the historical mean:
+
+$$
+x_t=\frac{1}{t-1}\sum_{s=1}^{t-1}y_s,\qquad t\ge 2.
+$$
+
+There are no past observations at the first round, so the default initial prediction is 0.5. With zero-based indexing, the implementation updates the mean as follows:
+
+```python
+x[i + 1] = x[i] + (y[i] - x[i]) / (i + 1)
+```
+
+After observing `y[i]`, this updates the **next** prediction. It does not use the current answer to make the current prediction. Each update takes constant time; computing and storing all T predictions takes O(T) time and O(T) space.
+
+### Static regret and API
+
+The best fixed decision in hindsight is the mean of the entire sequence:
+
+$$
+u=\frac{1}{T}\sum_{t=1}^{T}y_t.
+$$
+
+Cumulative static regret compares the algorithm's loss with the loss of that single fixed decision:
+
+$$
+R_T=\sum_{t=1}^{T}(x_t-y_t)^2-\sum_{t=1}^{T}(u-y_t)^2.
+$$
+
+The comparator u is used only for evaluation after the sequence is known. It does not participate in online predictions, and it is not a different optimal decision at every round.
+
+- `ftl_square(y)` returns cumulative static regret.
+- `ftl_square_predictions(y)` returns the prediction sequence.
+- Both accept a nonempty, one-dimensional sequence of finite real values. The `x0` parameter sets the first prediction and must be a finite real scalar, not a list or one-dimensional array. Complex inputs are rejected.
+
+### Worked example
+
+For `y = [0, 1]`, the default predictions are `[0.5, 0]`:
+
+- Algorithm loss: 0.5² + (0 − 1)² = 1.25.
+- Best fixed decision: u = 0.5, with cumulative loss 0.5.
+- Static regret: 1.25 − 0.5 = **0.75**.
+
+See [the tests](tests/test_ftl.py) for hand-calculated examples, boundary inputs, and checks that predictions do not use current or future observations.
+
+### Reproduce the experiment
+
+```bash
+python -m experiments.run_ftl_square --rounds 400 --seed 42
+```
+
+The script prints the initial observations and predictions, the algorithm's cumulative loss, the best fixed decision's cumulative loss, and regret. The default regret is approximately **2.108443** in the reference environment. Keep the environment, round count, and seed unchanged to reproduce it. This experiment does not establish FTL guarantees for arbitrary loss functions.
+
+## OGD vs. FTL with linear loss
+
+This deterministic example uses alternating gradients to illustrate the difference between FTL and projected OGD.
+
+### Experiment sequence
+
+Odd rounds have positive gradients and even rounds have negative gradients, except that the first gradient is 0.5:
 
 ```python
 t = np.arange(1, T + 1)
@@ -94,58 +129,66 @@ g = np.where(t % 2 == 1, 1.0, -1.0)
 g[0] = 0.5
 ```
 
-这里用 `1.0` 和 `-1.0` 生成浮点数组。如果用整数 `1` 和 `-1`，
-再赋值 `g[0] = 0.5` 就会截成 `0`，改变实验。
+The floating-point branches `1.0` and `-1.0` matter: integer branches would create an integer array, and assigning `0.5` would truncate it to `0`, changing the experiment.
 
-### 问题、更新与比较基准
+### OGD update and bound
 
-每轮在 $`[-1,1]`$ 内选择 $`x_t`$，随后观察梯度 $`g_t`$，损失为 $`f_t(x)=g_tx`$。
-OGD 从 $`x_1=0`$ 开始，以固定步长更新：
+At round t, choose a decision in [−1, 1] before observing the gradient. The linear loss is
 
-```math
+$$
+f_t(x)=g_t x.
+$$
+
+Starting from zero, OGD uses a fixed step size and projects the updated decision back into the interval:
+
+$$
 x_{t+1}=\min\{1,\max\{-1,x_t-\eta g_t\}\},\qquad \eta=\frac{2}{\sqrt{T}}.
-```
+$$
 
-这里的内外两次取最大值、最小值就是投影到区间 `[-1, 1]`，代码使用
-`np.clip(x_t - eta * g_t, -1, 1)`。`eta` 必须是单个有限正实数，初值必须在区间内。
+The projection is implemented by `np.clip(x_t - eta * g_t, -1, 1)`. The step size `eta` must be a finite positive real scalar, and the initial decision must lie in the interval. Save the current decision **before** applying the current gradient so that each decision depends only on past information.
 
-必须先保存本轮 $`x_t`$，再用 $`g_t`$ 更新下一轮，确保本轮决策只依赖过去的信息。
-决策域的直径为 $`D=2`$，实验满足 $`|g_t|\le G=1`$，所以此步长下
-OGD 的静态遗憾上界为 $`DG\sqrt T=2\sqrt T`$。
-若使用其他梯度序列，步长与上界需要根据实际梯度界重新选择。
+The interval has diameter D = 2, and this experiment has gradient bound G = 1. The standard OGD static-regret bound with the chosen step size is
 
-固定决策 $`u`$ 的累计损失是 $`u\sum_t g_t`$。当梯度和为正时取 $`u=-1`$，
-为负时取 $`u=1`$，为零时任意可行决策都一样。因此：
+$$
+R_T\le DG\sqrt{T}=2\sqrt{T}.
+$$
 
-```math
-\min_{u\in[-1,1]}\sum_t g_tu=-\left|\sum_tg_t\right|,
-\qquad R_T=\sum_tg_tx_t+\left|\sum_tg_t\right|.
-```
+For a different gradient sequence, choose the step size and bound using its actual gradient bound.
 
-FTL 同样最小化累计线性损失，但决策时只使用过去的梯度和，
-即 $`x_t=-\mathrm{sign}(\sum_{s=1}^{t-1}g_s)`$；其中符号函数在正数、负数、零处分别取 $`1`$、$`-1`$、$`0`$。
-在本实验序列上，FTL 的决策在两个端点之间来回跳，持续产生损失。
-OGD 的更新幅度较小，因此在这个例子中的遗憾明显更低。
+### Comparator and FTL
 
-### 运行与结果
+A fixed decision u incurs cumulative loss equal to u times the sum of gradients. The optimal fixed decision is −1 when that sum is positive and 1 when it is negative; every feasible decision is optimal when the sum is zero. Therefore,
 
-沿用上面的 Python/NumPy/pytest 环境，在仓库根目录运行：
+$$
+\min_{u\in[-1,1]}\sum_{t=1}^{T}g_tu=-\left|\sum_{t=1}^{T}g_t\right|,
+\qquad
+R_T=\sum_{t=1}^{T}g_tx_t+\left|\sum_{t=1}^{T}g_t\right|.
+$$
+
+FTL instead chooses its decision by minimizing only the losses observed before the current round:
+
+$$
+x_t=-\operatorname{sign}\!\left(\sum_{s=1}^{t-1}g_s\right).
+$$
+
+Here sign returns 1, −1, or 0 for a positive, negative, or zero input, respectively. On this alternating sequence, FTL repeatedly jumps between the interval's endpoints and incurs loss. OGD makes smaller updates and has much lower regret in this example.
+
+`ogd_linear` and `ftl_linear` return the per-round decisions; `linear_regret` computes their static regret. See [the tests](tests/test_ogd.py) for hand calculations, the 400-round result, projection boundaries, online timing, and invalid inputs.
+
+### Reproduce the comparison
 
 ```bash
-python -m pytest -q
 python -m experiments.run_ogd_linear --rounds 400
 ```
 
-默认梯度序列开头为 `[0.5, -1, 1, -1, 1]`，OGD 决策开头为
-`[0, -0.05, 0.05, -0.05, 0.05]`。400 轮的结果为：
+The gradients start with `[0.5, -1, 1, -1, 1]`; OGD's decisions start with `[0, -0.05, 0.05, -0.05, 0.05]`. At 400 rounds:
 
-| 指标 | 数值 |
+| Metric | Value |
 |---|---:|
-| 最佳固定决策累计损失 | -0.5 |
-| OGD 累计损失 | 19.95 |
-| OGD 静态遗憾 | 20.45 |
-| FTL 静态遗憾 | 399.5 |
-| OGD 理论上界 | 40 |
+| Best fixed decision's cumulative loss | −0.5 |
+| OGD cumulative loss | 19.95 |
+| OGD static regret | 20.45 |
+| FTL static regret | 399.5 |
+| OGD theoretical regret bound | 40 |
 
-这是确定性实验，不需要随机种子。改变 `--rounds` 时会按总轮数重新选择步长。
-这些结果用于核对实现和理解算法差异，数值实验不能替代理论证明。
+Changing `--rounds` also recalculates the step size from the new horizon. This example illustrates behavior on a specific sequence, not universal superiority of one algorithm over another.
