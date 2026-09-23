@@ -142,7 +142,7 @@ $$
 Starting from zero, OGD uses a fixed step size and projects the updated decision back into the interval:
 
 $$
-x_{t+1}=\min\{1,\max\{-1,x_t-\eta g_t\}\},\qquad \eta=\frac{2}{\sqrt{T}}.
+x_{t+1}=\min\lbrace 1,\max\lbrace -1,x_t-\eta g_t\rbrace\rbrace,\qquad \eta=\frac{2}{\sqrt{T}}.
 $$
 
 The projection is implemented by `np.clip(x_t - eta * g_t, -1, 1)`. The step size `eta` must be a finite positive real scalar, and the initial decision must lie in the interval. Save the current decision **before** applying the current gradient so that each decision depends only on past information.
@@ -168,7 +168,7 @@ $$
 FTL instead chooses its decision by minimizing only the losses observed before the current round:
 
 $$
-x_t=-\operatorname{sign}\!\left(\sum_{s=1}^{t-1}g_s\right).
+x_t=-\operatorname{sign}\left(\sum_{s=1}^{t-1}g_s\right).
 $$
 
 Here sign returns 1, −1, or 0 for a positive, negative, or zero input, respectively. On this alternating sequence, FTL repeatedly jumps between the interval's endpoints and incurs loss. OGD makes smaller updates and has much lower regret in this example.
